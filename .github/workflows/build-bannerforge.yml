@@ -1,0 +1,108 @@
+name: Build BannerForge APK from ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Vérifier le ZIP source
+        run: |
+          test -f BannerForge_Source.zip || { echo "ERREUR: BannerForge_Source.zip est introuvable à la racine du dépôt."; exit 1; }
+          unzip -t BannerForge_Source.zip
+
+      - name: Extraire BannerForge
+        run: |
+          rm -rf app
+          mkdir app
+          unzip -q BannerForge_Source.zip -d app
+          test -f app/package.json || { echo "ERREUR: package.json absent du ZIP."; exit 1; }
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: app/package.json
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Installer les dépendances
+        working-directory: app
+        run: npm install
+
+      - name: Compiler l'application web
+        working-directory: app
+        run: npm run build
+
+      - name: Créer le projet Android
+        working-directory: app
+        run: npx cap add android
+
+      - name: Synchroniser Capacitor
+        working-directory: app
+        run: npx cap sync android
+
+      - name: Appliquer version et code de mise à jour
+        working-directory: app
+        run: |
+          APP_VERSION=$(node -p "require('./package.json').version")
+          VERSION_CODE=$(date +%s)
+          python3 - "$APP_VERSION" "$VERSION_CODE" <<'PY'
+          import re, sys
+          from pathlib import Path
+
+          version, code = sys.argv[1], sys.argv[2]
+          candidates = [Path('android/app/build.gradle'), Path('android/app/build.gradle.kts')]
+          target = next((p for p in candidates if p.exists()), None)
+          if target is None:
+              raise SystemExit('Fichier Gradle Android introuvable')
+
+          text = target.read_text(encoding='utf-8')
+          text, n1 = re.subn(r'versionCode\s*(?:=\s*)?\d+', f'versionCode {code}' if target.suffix == '.gradle' else f'versionCode = {code}', text, count=1)
+          text, n2 = re.subn(r'versionName\s*(?:=\s*)?["\'][^"\']+["\']', f'versionName "{version}"' if target.suffix == '.gradle' else f'versionName = "{version}"', text, count=1)
+          if not n1 or not n2:
+              raise SystemExit('Impossible de modifier versionCode/versionName dans ' + str(target))
+          target.write_text(text, encoding='utf-8')
+          print(f'BannerForge {version} / versionCode {code}')
+          PY
+
+      - name: Installer la clé de signature stable
+        working-directory: app
+        run: |
+          test -f signing/bannerforge-debug.keystore || { echo "ERREUR: clé de signature absente."; exit 1; }
+          mkdir -p "$HOME/.android"
+          cp signing/bannerforge-debug.keystore "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
+      - name: Compiler l'APK
+        working-directory: app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Renommer l'APK
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk "BannerForge-v${VERSION}.apk"
+
+      - name: Publier l'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BannerForge-APK
+          path: BannerForge-v*.apk
+          if-no-files-found: error
+          retention-days: 30
+          
