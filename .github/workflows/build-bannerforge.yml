@@ -225,4 +225,3 @@ jobs:
           path: Redacted-BannerLab-v*.apk
           if-no-files-found: error
           retention-days: 30
-          
