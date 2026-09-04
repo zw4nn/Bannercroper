@@ -646,10 +646,10 @@ jobs:
 
           echo "OK : signature stable Redacted BannerLab vérifiée."
 
-      - name: Publier l'APK
+        - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Redacted-BannerLab-APK
+          name: Redacted-BannerLab-APK-${{ github.run_number }}-${{ github.run_attempt }}
           path: Redacted-BannerLab-v*.apk
           if-no-files-found: error
           retention-days: 30
