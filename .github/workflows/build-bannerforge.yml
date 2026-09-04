@@ -1,4 +1,4 @@
-name: Build BannerForge APK from ZIP
+name: Build Redacted BannerLab APK from ZIP
 
 on:
   workflow_dispatch:
@@ -16,22 +16,26 @@ jobs:
 
       - name: Vérifier le ZIP source
         run: |
-          test -f BannerForge_Source.zip || { echo "ERREUR: BannerForge_Source.zip est introuvable à la racine du dépôt."; exit 1; }
-          unzip -t BannerForge_Source.zip
+          test -f Redacted_BannerLab_Source.zip || {
+            echo "ERREUR: Redacted_BannerLab_Source.zip est introuvable à la racine du dépôt."
+            exit 1
+          }
+          unzip -t Redacted_BannerLab_Source.zip
 
-      - name: Extraire BannerForge
+      - name: Extraire Redacted BannerLab
         run: |
           rm -rf app
           mkdir app
-          unzip -q BannerForge_Source.zip -d app
-          test -f app/package.json || { echo "ERREUR: package.json absent du ZIP."; exit 1; }
+          unzip -q Redacted_BannerLab_Source.zip -d app
+          test -f app/package.json || {
+            echo "ERREUR: package.json absent du ZIP."
+            exit 1
+          }
 
       - name: Installer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: app/package.json
 
       - name: Installer Java
         uses: actions/setup-java@v4
@@ -55,36 +59,114 @@ jobs:
         working-directory: app
         run: npx cap sync android
 
-      - name: Appliquer version et code de mise à jour
+      - name: Appliquer l'icône native Redacted
+        working-directory: app
+        run: |
+          test -d android-res || {
+            echo "ERREUR: dossier android-res absent."
+            exit 1
+          }
+          test -d android/app/src/main/res || {
+            echo "ERREUR: ressources Android absentes."
+            exit 1
+          }
+
+          cp -a android-res/. android/app/src/main/res/
+
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png || {
+            echo "ERREUR: ic_launcher Redacted absent."
+            exit 1
+          }
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png || {
+            echo "ERREUR: foreground Redacted absent."
+            exit 1
+          }
+          test -f android/app/src/main/res/drawable-nodpi/redacted_bannerlab_logo.png || {
+            echo "ERREUR: ressource Redacted BannerLab absente."
+            exit 1
+          }
+
+          echo "Icône native Redacted appliquée."
+
+      - name: Appliquer version et versionCode Android
         working-directory: app
         run: |
           APP_VERSION=$(node -p "require('./package.json').version")
           VERSION_CODE=$(date +%s)
+
           python3 - "$APP_VERSION" "$VERSION_CODE" <<'PY'
-          import re, sys
+          import re
+          import sys
           from pathlib import Path
 
           version, code = sys.argv[1], sys.argv[2]
-          candidates = [Path('android/app/build.gradle'), Path('android/app/build.gradle.kts')]
+          candidates = [
+              Path("android/app/build.gradle"),
+              Path("android/app/build.gradle.kts"),
+          ]
           target = next((p for p in candidates if p.exists()), None)
           if target is None:
-              raise SystemExit('Fichier Gradle Android introuvable')
+              raise SystemExit("Fichier Gradle Android introuvable")
 
-          text = target.read_text(encoding='utf-8')
-          text, n1 = re.subn(r'versionCode\s*(?:=\s*)?\d+', f'versionCode {code}' if target.suffix == '.gradle' else f'versionCode = {code}', text, count=1)
-          text, n2 = re.subn(r'versionName\s*(?:=\s*)?["\'][^"\']+["\']', f'versionName "{version}"' if target.suffix == '.gradle' else f'versionName = "{version}"', text, count=1)
+          text = target.read_text(encoding="utf-8")
+
+          if target.suffix == ".gradle":
+              text, n1 = re.subn(
+                  r"versionCode\s+\d+",
+                  f"versionCode {code}",
+                  text,
+                  count=1,
+              )
+              text, n2 = re.subn(
+                  r'versionName\s+["\'][^"\']+["\']',
+                  f'versionName "{version}"',
+                  text,
+                  count=1,
+              )
+          else:
+              text, n1 = re.subn(
+                  r"versionCode\s*=\s*\d+",
+                  f"versionCode = {code}",
+                  text,
+                  count=1,
+              )
+              text, n2 = re.subn(
+                  r'versionName\s*=\s*["\'][^"\']+["\']',
+                  f'versionName = "{version}"',
+                  text,
+                  count=1,
+              )
+
           if not n1 or not n2:
-              raise SystemExit('Impossible de modifier versionCode/versionName dans ' + str(target))
-          target.write_text(text, encoding='utf-8')
-          print(f'BannerForge {version} / versionCode {code}')
+              raise SystemExit(
+                  "Impossible de modifier versionCode/versionName dans "
+                  + str(target)
+              )
+
+          target.write_text(text, encoding="utf-8")
+          print(f"Redacted BannerLab {version} / versionCode {code}")
           PY
 
       - name: Installer la clé de signature stable
         working-directory: app
         run: |
-          test -f signing/bannerforge-debug.keystore || { echo "ERREUR: clé de signature absente."; exit 1; }
+          test -f signing/redacted-bannerlab.keystore || {
+            echo "ERREUR: clé de signature absente."
+            exit 1
+          }
+
+          KEY_SHA=$(sha256sum signing/redacted-bannerlab.keystore | awk '{print $1}')
+          EXPECTED="1b7cc0b63572f546cd2998e7be7e09ed9ae24b5a75e3f89be5d0f18f6d34b30a"
+
+          echo "SHA256 keystore : $KEY_SHA"
+
+          test "$KEY_SHA" = "$EXPECTED" || {
+            echo "ERREUR: ce n'est pas la clé stable de Redacted BannerLab."
+            exit 1
+          }
+
           mkdir -p "$HOME/.android"
-          cp signing/bannerforge-debug.keystore "$HOME/.android/debug.keystore"
+          cp signing/redacted-bannerlab.keystore "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
 
       - name: Compiler l'APK
@@ -93,16 +175,54 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Vérifier la signature finale
+        working-directory: app
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "ERREUR: APK absent."
+            exit 1
+          }
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+
+          test -n "$APKSIGNER" || {
+            echo "ERREUR: apksigner introuvable."
+            exit 1
+          }
+
+          "$APKSIGNER" verify --print-certs "$APK"
+
+          CERT=$(
+            "$APKSIGNER" verify --print-certs "$APK" |
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+            head -n 1 |
+            tr '[:upper:]' '[:lower:]' |
+            tr -d ':'
+          )
+
+          EXPECTED="dcbdf249ecd45140a2b7940ea0866430e1fa73ec2a0a188a432785f63b95985b"
+
+          test "$CERT" = "$EXPECTED" || {
+            echo "ERREUR: APK signé avec une autre clé."
+            exit 1
+          }
+
+          echo "Signature stable vérifiée."
+
       - name: Renommer l'APK
         run: |
           VERSION=$(node -p "require('./app/package.json').version")
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk "BannerForge-v${VERSION}.apk"
+          cp \
+            app/android/app/build/outputs/apk/debug/app-debug.apk \
+            "Redacted-BannerLab-v${VERSION}.apk"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: BannerForge-APK
-          path: BannerForge-v*.apk
+          name: Redacted-BannerLab-APK
+          path: Redacted-BannerLab-v*.apk
           if-no-files-found: error
           retention-days: 30
           
