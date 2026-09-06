@@ -143,7 +143,9 @@ jobs:
       - name: Lire et vérifier la version
         working-directory: app
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          # package.json doit rester une version npm valide.
+          # Ex.: la release publique 1.0.13.1 utilise 1.0.13-1 côté npm.
+          NPM_VERSION=$(node -p "require('./package.json').version")
 
           GRADLE="android/app/build.gradle"
           test -f "$GRADLE" || {
@@ -154,12 +156,12 @@ jobs:
           VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$GRADLE" | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -n 1)
 
-          echo "package.json : $VERSION"
-          echo "versionName  : $VERSION_NAME"
-          echo "versionCode  : $VERSION_CODE"
+          echo "Version npm      : $NPM_VERSION"
+          echo "Version publique : $VERSION_NAME"
+          echo "versionCode      : $VERSION_CODE"
 
-          test "$VERSION" = "$VERSION_NAME" || {
-            echo "ERREUR: package.json et Android n'ont pas la même version."
+          test -n "$VERSION_NAME" || {
+            echo "ERREUR: versionName introuvable."
             exit 1
           }
 
@@ -168,7 +170,9 @@ jobs:
             exit 1
           }
 
-          echo "RBL_VERSION=$VERSION" >> "$GITHUB_ENV"
+          # La GitHub Release, le nom de l'APK et les métadonnées IGOR
+          # suivent toujours la version Android visible.
+          echo "RBL_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: Restaurer la clé de signature depuis GitHub Secrets
