@@ -1,20 +1,26 @@
-name: Build Redacted BannerLab APK from ZIP
+name: Build & Release Redacted BannerLab
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publier la GitHub Release"
+        required: true
+        default: false
+        type: boolean
+      release_notes:
+        description: "Notes de version (facultatif)"
+        required: false
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
 
     steps:
-      # ============================================================
-      # SOURCES
-      # ============================================================
-
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
@@ -24,14 +30,12 @@ jobs:
             echo "ERREUR: Redacted_BannerLab_Source.zip est introuvable à la racine du dépôt."
             exit 1
           }
-
           unzip -t Redacted_BannerLab_Source.zip
 
       - name: Extraire Redacted BannerLab
         run: |
           rm -rf app
           mkdir app
-
           unzip -q Redacted_BannerLab_Source.zip -d app
 
           test -f app/package.json || {
@@ -39,9 +43,11 @@ jobs:
             exit 1
           }
 
-      # ============================================================
-      # NODE / JAVA
-      # ============================================================
+          # Le dépôt est public : aucune clé privée ne doit être dans le ZIP.
+          if find app -type f \( -name "*.keystore" -o -name "*.jks" -o -name "*.p12" -o -name "*.pfx" \) | grep -q .; then
+            echo "ERREUR: une clé de signature est présente dans le ZIP source."
+            exit 1
+          fi
 
       - name: Installer Node.js
         uses: actions/setup-node@v4
@@ -52,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('app/package.json', 'app/package-lock.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('app/package.json') }}
           restore-keys: |
             npm-${{ runner.os }}-
 
@@ -62,53 +68,30 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Configurer le cache Gradle
+      - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      # ============================================================
-      # APPLICATION WEB
-      # ============================================================
 
       - name: Installer les dépendances
         working-directory: app
         timeout-minutes: 12
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --no-fund
-          else
-            npm install --prefer-offline --no-audit --no-fund
-          fi
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Compiler l'application web
         working-directory: app
         run: npm run build
 
-      # ============================================================
-      # CAPACITOR / ANDROID
-      # ============================================================
-
       - name: Générer Android proprement
         working-directory: app
         run: |
           rm -rf android
-
           npx cap add android
           npx cap sync android
 
-      # ============================================================
-      # ICÔNE REDACTED
-      # ============================================================
-
-      - name: Appliquer l'icône native Redacted
+      - name: Appliquer les ressources Android
         working-directory: app
         run: |
           test -d android-res || {
             echo "ERREUR: dossier android-res absent."
-            exit 1
-          }
-
-          test -d android/app/src/main/res || {
-            echo "ERREUR: dossier Android res absent."
             exit 1
           }
 
@@ -119,266 +102,155 @@ jobs:
             exit 1
           }
 
-          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png || {
-            echo "ERREUR: foreground Redacted absent."
-            exit 1
-          }
-
           test -f android/app/src/main/res/drawable-nodpi/redacted_bannerlab_logo.png || {
             echo "ERREUR: logo Redacted BannerLab absent."
             exit 1
           }
 
-          echo "OK : icône native Redacted installée."
-
-      # ============================================================
-      # IITC BRIDGE
-      # ============================================================
-
-      - name: Activer le deep link IITC Bridge
+      - name: Appliquer le patch Android RBL + config IGOR updater
         working-directory: app
+        env:
+          RBL_GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           test -f android-patch/patch_manifest.py || {
-            echo "ERREUR: android-patch/patch_manifest.py absent."
+            echo "ERREUR: patch Android absent."
             exit 1
           }
 
           python3 android-patch/patch_manifest.py
 
-          grep -q "redactedbannerlab" android/app/src/main/AndroidManifest.xml || {
-            echo "ERREUR: deep link redactedbannerlab non ajouté au Manifest."
+          grep -q 'redactedbannerlab' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: deep link redactedbannerlab non ajouté."
             exit 1
           }
 
-          echo "OK : IITC Bridge activé."
+          grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: permission REQUEST_INSTALL_PACKAGES absente."
+            exit 1
+          }
 
-      # ============================================================
-      # VERSION ANDROID
-      # ============================================================
+          grep -q 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: permission updater silencieux absente."
+            exit 1
+          }
 
-      - name: Appliquer version et versionCode Android
+          grep -q "${GITHUB_REPOSITORY}" android/app/src/main/assets/public/update-config.json || {
+            echo "ERREUR: dépôt GitHub non injecté."
+            cat android/app/src/main/assets/public/update-config.json || true
+            exit 1
+          }
+
+      - name: Lire et vérifier la version
         working-directory: app
         run: |
-          APP_VERSION=$(node -p "require('./package.json').version")
-          VERSION_CODE=$(date +%s)
+          VERSION=$(node -p "require('./package.json').version")
 
-          python3 - "$APP_VERSION" "$VERSION_CODE" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
+          GRADLE="android/app/build.gradle"
+          test -f "$GRADLE" || {
+            echo "ERREUR: build.gradle absent."
+            exit 1
+          }
 
-          version, code = sys.argv[1], sys.argv[2]
+          VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$GRADLE" | head -n 1)
+          VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -n 1)
 
-          candidates = [
-              Path("android/app/build.gradle"),
-              Path("android/app/build.gradle.kts"),
-          ]
+          echo "package.json : $VERSION"
+          echo "versionName  : $VERSION_NAME"
+          echo "versionCode  : $VERSION_CODE"
 
-          target = next(
-              (p for p in candidates if p.exists()),
-              None
-          )
+          test "$VERSION" = "$VERSION_NAME" || {
+            echo "ERREUR: package.json et Android n'ont pas la même version."
+            exit 1
+          }
 
-          if target is None:
-              raise SystemExit(
-                  "Fichier Gradle Android introuvable"
-              )
+          test -n "$VERSION_CODE" || {
+            echo "ERREUR: versionCode introuvable."
+            exit 1
+          }
 
-          text = target.read_text(
-              encoding="utf-8"
-          )
+          echo "RBL_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
-          if target.name.endswith(".kts"):
+      - name: Restaurer la clé de signature depuis GitHub Secrets
+        working-directory: app
+        env:
+          RBL_KEYSTORE_BASE64: ${{ secrets.RBL_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$RBL_KEYSTORE_BASE64" || {
+            echo "ERREUR: secret RBL_KEYSTORE_BASE64 absent."
+            exit 1
+          }
 
-              text, n1 = re.subn(
-                  r"versionCode\s*=\s*\d+",
-                  f"versionCode = {code}",
-                  text,
-                  count=1,
-              )
-
-              text, n2 = re.subn(
-                  r'versionName\s*=\s*["\'][^"\']+["\']',
-                  f'versionName = "{version}"',
-                  text,
-                  count=1,
-              )
-
-          else:
-
-              text, n1 = re.subn(
-                  r"versionCode\s+\d+",
-                  f"versionCode {code}",
-                  text,
-                  count=1,
-              )
-
-              text, n2 = re.subn(
-                  r'versionName\s+["\'][^"\']+["\']',
-                  f'versionName "{version}"',
-                  text,
-                  count=1,
-              )
-
-          if not n1:
-              raise SystemExit(
-                  "Impossible de modifier versionCode"
-              )
-
-          if not n2:
-              raise SystemExit(
-                  "Impossible de modifier versionName"
-              )
-
-          target.write_text(
-              text,
-              encoding="utf-8"
-          )
-
-          print(
-              f"Redacted BannerLab {version}"
-          )
-
-          print(
-              f"versionCode Android : {code}"
-          )
-          PY
-
-      # ============================================================
-      # CLÉ DE SIGNATURE
-      # ============================================================
+          mkdir -p signing
+          printf '%s' "$RBL_KEYSTORE_BASE64" | base64 --decode > signing/redacted-bannerlab.keystore
+          chmod 600 signing/redacted-bannerlab.keystore
 
       - name: Vérifier la clé stable
         working-directory: app
+        env:
+          RBL_KEYSTORE_PASSWORD: ${{ secrets.RBL_KEYSTORE_PASSWORD }}
+          RBL_KEY_PASSWORD: ${{ secrets.RBL_KEY_PASSWORD }}
         run: |
           KEYSTORE="$GITHUB_WORKSPACE/app/signing/redacted-bannerlab.keystore"
 
-          test -f "$KEYSTORE" || {
-            echo "ERREUR: redacted-bannerlab.keystore absent."
-            exit 1
-          }
+          test -f "$KEYSTORE" || { echo "ERREUR: keystore absent."; exit 1; }
+          test -n "$RBL_KEYSTORE_PASSWORD" || { echo "ERREUR: secret RBL_KEYSTORE_PASSWORD absent."; exit 1; }
+          test -n "$RBL_KEY_PASSWORD" || { echo "ERREUR: secret RBL_KEY_PASSWORD absent."; exit 1; }
 
-          KEY_SHA=$(
-            sha256sum "$KEYSTORE" |
-            awk '{print $1}'
-          )
-
+          KEY_SHA=$(sha256sum "$KEYSTORE" | awk '{print $1}')
           EXPECTED_KEY_SHA="1b7cc0b63572f546cd2998e7be7e09ed9ae24b5a75e3f89be5d0f18f6d34b30a"
 
-          echo "SHA256 fichier keystore :"
-          echo "$KEY_SHA"
+          echo "SHA256 fichier keystore : $KEY_SHA"
 
           test "$KEY_SHA" = "$EXPECTED_KEY_SHA" || {
             echo "ERREUR: mauvaise clé de signature."
             exit 1
           }
 
-          echo "Certificat contenu dans la clé :"
-
-          keytool \
-            -list \
-            -v \
+          keytool -list -v \
             -keystore "$KEYSTORE" \
-            -storepass android \
+            -storepass "$RBL_KEYSTORE_PASSWORD" \
             -alias androiddebugkey \
-            -keypass android \
-            | grep -E "Owner:|SHA256:"
+            -keypass "$RBL_KEY_PASSWORD" | grep -E "Owner:|SHA256:"
 
-          echo "OK : clé stable Redacted BannerLab."
-
-      # ============================================================
-      # BUILD RELEASE NON SIGNÉ
-      # ============================================================
-
-      - name: Compiler un APK RELEASE NON SIGNÉ
+      - name: Compiler un APK RELEASE non signé
         working-directory: app/android
         run: |
           chmod +x gradlew
-
           ./gradlew clean assembleRelease
 
-          echo "APK générés par Gradle :"
-
-          find app/build/outputs/apk \
-            -type f \
-            -name "*.apk" \
-            -print
-
-          UNSIGNED=$(
-            find app/build/outputs/apk/release \
-              -type f \
-              -name "*unsigned*.apk" \
-              | head -n 1
-          )
+          UNSIGNED=$(find app/build/outputs/apk/release -type f -name "*unsigned*.apk" | head -n 1)
 
           test -n "$UNSIGNED" || {
             echo "ERREUR: APK release non signé introuvable."
             exit 1
           }
 
-          echo "$UNSIGNED" \
-            > /tmp/redacted_unsigned_apk
-
-          echo "APK non signé :"
-          echo "$UNSIGNED"
-
-      # ============================================================
-      # ZIPALIGN + SIGNATURE MANUELLE
-      # ============================================================
+          echo "$UNSIGNED" > /tmp/redacted_unsigned_apk
 
       - name: Signer l'APK avec la clé stable
         working-directory: app
+        env:
+          RBL_KEYSTORE_PASSWORD: ${{ secrets.RBL_KEYSTORE_PASSWORD }}
+          RBL_KEY_PASSWORD: ${{ secrets.RBL_KEY_PASSWORD }}
         run: |
           UNSIGNED="android/$(cat /tmp/redacted_unsigned_apk)"
-
           KEYSTORE="$GITHUB_WORKSPACE/app/signing/redacted-bannerlab.keystore"
 
-          VERSION=$(
-            node -p "require('./package.json').version"
-          )
-
-          BUILD_TOOLS=$(
-            find "$ANDROID_HOME/build-tools" \
-              -mindepth 1 \
-              -maxdepth 1 \
-              -type d \
-              | sort -V \
-              | tail -n 1
-          )
-
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
           ZIPALIGN="$BUILD_TOOLS/zipalign"
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
-          test -x "$ZIPALIGN" || {
-            echo "ERREUR: zipalign introuvable."
-            exit 1
-          }
-
-          test -x "$APKSIGNER" || {
-            echo "ERREUR: apksigner introuvable."
-            exit 1
-          }
-
           ALIGNED="$GITHUB_WORKSPACE/Redacted-BannerLab-aligned.apk"
+          SIGNED="$GITHUB_WORKSPACE/Redacted-BannerLab-v${RBL_VERSION}.apk"
 
-          SIGNED="$GITHUB_WORKSPACE/Redacted-BannerLab-v${VERSION}.apk"
-
-          echo "Alignement APK..."
-
-          "$ZIPALIGN" \
-            -f \
-            -p \
-            4 \
-            "$UNSIGNED" \
-            "$ALIGNED"
-
-          echo "Signature APK..."
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$ALIGNED"
 
           "$APKSIGNER" sign \
             --ks "$KEYSTORE" \
             --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
+            --ks-pass env:RBL_KEYSTORE_PASSWORD \
+            --key-pass env:RBL_KEY_PASSWORD \
             --out "$SIGNED" \
             "$ALIGNED"
 
@@ -389,103 +261,92 @@ jobs:
             exit 1
           }
 
-          echo "$SIGNED" \
-            > /tmp/redacted_signed_apk
-
-          echo "APK final :"
-          echo "$SIGNED"
-
-      # ============================================================
-      # CONTRÔLE DE LA SIGNATURE FINALE
-      # ============================================================
+          echo "$SIGNED" > /tmp/redacted_signed_apk
 
       - name: Vérifier la signature finale
         run: |
           APK=$(cat /tmp/redacted_signed_apk)
-
-          BUILD_TOOLS=$(
-            find "$ANDROID_HOME/build-tools" \
-              -mindepth 1 \
-              -maxdepth 1 \
-              -type d \
-              | sort -V \
-              | tail -n 1
-          )
-
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
-          echo "========================================"
-          echo "CERTIFICAT APK FINAL"
-          echo "========================================"
-
-          CERT_OUTPUT=$(
-            "$APKSIGNER" verify \
-              --verbose \
-              --print-certs \
-              "$APK"
-          )
-
+          CERT_OUTPUT=$("$APKSIGNER" verify --verbose --print-certs "$APK")
           echo "$CERT_OUTPUT"
 
-          CERT=$(
-            echo "$CERT_OUTPUT" \
-              | grep -i "certificate SHA-256 digest:" \
-              | head -n 1 \
-              | sed 's/.*certificate SHA-256 digest:[[:space:]]*//' \
-              | tr '[:upper:]' '[:lower:]' \
-              | tr -d ':[:space:]'
-          )
-
+          CERT=$(echo "$CERT_OUTPUT" | grep -i "certificate SHA-256 digest:" | head -n 1 | sed 's/.*certificate SHA-256 digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')
           EXPECTED_CERT="dcbdf249ecd45140a2b7940ea0866430e1fa73ec2a0a188a432785f63b95985b"
 
-          echo "Certificat détecté :"
-          echo "$CERT"
-
-          echo "Certificat attendu :"
-          echo "$EXPECTED_CERT"
-
           test "$CERT" = "$EXPECTED_CERT" || {
-            echo "ERREUR: l'APK final n'utilise pas la clé stable."
+            echo "ERREUR: l'APK final n'utilise pas le certificat RBL attendu."
             exit 1
           }
 
-          echo "OK : signature stable Redacted BannerLab vérifiée."
+          echo "OK : signature stable vérifiée."
 
-      # ============================================================
-      # INFORMATIONS BUILD
-      # ============================================================
+      - name: Supprimer la clé du workspace
+        if: always()
+        run: rm -rf "$GITHUB_WORKSPACE/app/signing"
 
-      - name: Résumé du build
+      - name: Générer SHA-256 et métadonnées updater
         run: |
           APK=$(cat /tmp/redacted_signed_apk)
+          APK_NAME=$(basename "$APK")
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
 
-          echo "========================================"
-          echo "REDACTED BANNERLAB"
-          echo "========================================"
+          printf '%s  %s\n' "$SHA" "$APK_NAME" > "${APK}.sha256"
 
-          echo "APK :"
-          basename "$APK"
+          cat > "$GITHUB_WORKSPACE/Redacted-BannerLab-update.json" <<EOF
+          {
+            "versionName": "${RBL_VERSION}",
+            "versionCode": ${RBL_VERSION_CODE},
+            "packageName": "com.bannerforge.mobile",
+            "apk": "${APK_NAME}",
+            "sha256": "${SHA}"
+          }
+          EOF
 
-          echo ""
-          echo "Taille :"
-          du -h "$APK"
+          cat "$GITHUB_WORKSPACE/Redacted-BannerLab-update.json"
 
-          echo ""
-          echo "Run GitHub :"
-          echo "${{ github.run_number }}"
-
-          echo ""
-          echo "Tentative :"
-          echo "${{ github.run_attempt }}"
-
-      # ============================================================
-      # ARTIFACT GITHUB
-      # ============================================================
-
-      - name: Publier l'APK
+      - name: Publier l'APK comme artifact du workflow
         uses: actions/upload-artifact@v4
         with:
-          name: Redacted-BannerLab-APK-${{ github.run_number }}-${{ github.run_attempt }}
-          path: Redacted-BannerLab-v*.apk
+          name: Redacted-BannerLab-APK
+          path: |
+            Redacted-BannerLab-v*.apk
+            Redacted-BannerLab-v*.apk.sha256
+            Redacted-BannerLab-update.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publier / mettre à jour la GitHub Release
+        if: ${{ inputs.publish_release == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          TAG="v${RBL_VERSION}"
+          APK=$(cat /tmp/redacted_signed_apk)
+          SHA_FILE="${APK}.sha256"
+          META="$GITHUB_WORKSPACE/Redacted-BannerLab-update.json"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} existante : remplacement des assets."
+            gh release upload "$TAG" "$APK" "$SHA_FILE" "$META" --clobber
+
+            if [ -n "$RELEASE_NOTES" ]; then
+              gh release edit "$TAG" \
+                --title "Redacted BannerLab ${RBL_VERSION}" \
+                --notes "$RELEASE_NOTES"
+            fi
+          else
+            if [ -n "$RELEASE_NOTES" ]; then
+              gh release create "$TAG" "$APK" "$SHA_FILE" "$META" \
+                --title "Redacted BannerLab ${RBL_VERSION}" \
+                --notes "$RELEASE_NOTES"
+            else
+              gh release create "$TAG" "$APK" "$SHA_FILE" "$META" \
+                --title "Redacted BannerLab ${RBL_VERSION}" \
+                --generate-notes
+            fi
+          fi
+
+          echo "Release publiée : ${TAG}"
