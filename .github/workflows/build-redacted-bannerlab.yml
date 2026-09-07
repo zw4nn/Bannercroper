@@ -30,6 +30,7 @@ jobs:
             echo "ERREUR: Redacted_BannerLab_Source.zip est introuvable à la racine du dépôt."
             exit 1
           }
+
           unzip -t Redacted_BannerLab_Source.zip
 
       - name: Extraire Redacted BannerLab
@@ -165,12 +166,14 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
 
           GRADLE="android/app/build.gradle"
+
           test -f "$GRADLE" || {
             echo "ERREUR: build.gradle absent."
             exit 1
           }
 
           VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$GRADLE" | head -n 1)
+
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -n 1)
 
           echo "package.json : $VERSION"
@@ -188,7 +191,9 @@ jobs:
           }
 
           echo "RBL_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"      - name: Restaurer la clé de signature depuis GitHub Secrets
+          echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: Restaurer la clé de signature depuis GitHub Secrets
         working-directory: app
         env:
           RBL_KEYSTORE_BASE64: ${{ secrets.RBL_KEYSTORE_BASE64 }}
@@ -199,7 +204,9 @@ jobs:
           }
 
           mkdir -p signing
+
           printf '%s' "$RBL_KEYSTORE_BASE64" | base64 --decode > signing/redacted-bannerlab.keystore
+
           chmod 600 signing/redacted-bannerlab.keystore
 
       - name: Vérifier la clé stable
@@ -210,11 +217,23 @@ jobs:
         run: |
           KEYSTORE="$GITHUB_WORKSPACE/app/signing/redacted-bannerlab.keystore"
 
-          test -f "$KEYSTORE" || { echo "ERREUR: keystore absent."; exit 1; }
-          test -n "$RBL_KEYSTORE_PASSWORD" || { echo "ERREUR: secret RBL_KEYSTORE_PASSWORD absent."; exit 1; }
-          test -n "$RBL_KEY_PASSWORD" || { echo "ERREUR: secret RBL_KEY_PASSWORD absent."; exit 1; }
+          test -f "$KEYSTORE" || {
+            echo "ERREUR: keystore absent."
+            exit 1
+          }
+
+          test -n "$RBL_KEYSTORE_PASSWORD" || {
+            echo "ERREUR: secret RBL_KEYSTORE_PASSWORD absent."
+            exit 1
+          }
+
+          test -n "$RBL_KEY_PASSWORD" || {
+            echo "ERREUR: secret RBL_KEY_PASSWORD absent."
+            exit 1
+          }
 
           KEY_SHA=$(sha256sum "$KEYSTORE" | awk '{print $1}')
+
           EXPECTED_KEY_SHA="1b7cc0b63572f546cd2998e7be7e09ed9ae24b5a75e3f89be5d0f18f6d34b30a"
 
           echo "SHA256 fichier keystore : $KEY_SHA"
@@ -234,6 +253,7 @@ jobs:
         working-directory: app/android
         run: |
           chmod +x gradlew
+
           ./gradlew clean assembleRelease
 
           UNSIGNED=$(find app/build/outputs/apk/release -type f -name "*unsigned*.apk" | head -n 1)
@@ -252,13 +272,16 @@ jobs:
           RBL_KEY_PASSWORD: ${{ secrets.RBL_KEY_PASSWORD }}
         run: |
           UNSIGNED="android/$(cat /tmp/redacted_unsigned_apk)"
+
           KEYSTORE="$GITHUB_WORKSPACE/app/signing/redacted-bannerlab.keystore"
 
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+
           ZIPALIGN="$BUILD_TOOLS/zipalign"
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
           ALIGNED="$GITHUB_WORKSPACE/Redacted-BannerLab-aligned.apk"
+
           SIGNED="$GITHUB_WORKSPACE/Redacted-BannerLab-v${RBL_VERSION}.apk"
 
           "$ZIPALIGN" -f -p 4 "$UNSIGNED" "$ALIGNED"
@@ -283,13 +306,17 @@ jobs:
       - name: Vérifier la signature finale
         run: |
           APK=$(cat /tmp/redacted_signed_apk)
+
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+
           APKSIGNER="$BUILD_TOOLS/apksigner"
 
           CERT_OUTPUT=$("$APKSIGNER" verify --verbose --print-certs "$APK")
+
           echo "$CERT_OUTPUT"
 
           CERT=$(echo "$CERT_OUTPUT" | grep -i "certificate SHA-256 digest:" | head -n 1 | sed 's/.*certificate SHA-256 digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')
+
           EXPECTED_CERT="dcbdf249ecd45140a2b7940ea0866430e1fa73ec2a0a188a432785f63b95985b"
 
           test "$CERT" = "$EXPECTED_CERT" || {
@@ -306,7 +333,9 @@ jobs:
       - name: Générer SHA-256 et métadonnées updater
         run: |
           APK=$(cat /tmp/redacted_signed_apk)
+
           APK_NAME=$(basename "$APK")
+
           SHA=$(sha256sum "$APK" | awk '{print $1}')
 
           printf '%s  %s\n' "$SHA" "$APK_NAME" > "${APK}.sha256"
@@ -341,12 +370,16 @@ jobs:
           RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           TAG="v${RBL_VERSION}"
+
           APK=$(cat /tmp/redacted_signed_apk)
+
           SHA_FILE="${APK}.sha256"
+
           META="$GITHUB_WORKSPACE/Redacted-BannerLab-update.json"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release ${TAG} existante : remplacement des assets."
+
             gh release upload "$TAG" "$APK" "$SHA_FILE" "$META" --clobber
 
             if [ -n "$RELEASE_NOTES" ]; then
