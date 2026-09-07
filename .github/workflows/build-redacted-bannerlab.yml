@@ -117,9 +117,7 @@ jobs:
             exit 1
           }
 
-          python3 android-patch/patch_manifest.py
-
-          grep -q 'redactedbannerlab' android/app/src/main/AndroidManifest.xml || {
+          python3 android-patch/patch_manifest.py          grep -q 'redactedbannerlab' android/app/src/main/AndroidManifest.xml || {
             echo "ERREUR: deep link redactedbannerlab non ajouté."
             exit 1
           }
@@ -129,8 +127,28 @@ jobs:
             exit 1
           }
 
-          grep -q 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' android/app/src/main/AndroidManifest.xml || {
-            echo "ERREUR: permission updater silencieux absente."
+          if grep -q 'UPDATE_PACKAGES_WITHOUT_USER_ACTION' android/app/src/main/AndroidManifest.xml; then
+            echo "ERREUR: permission updater silencieux interdite encore présente."
+            exit 1
+          fi
+
+          grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: sauvegarde système Android non désactivée."
+            exit 1
+          }
+
+          grep -q 'android:usesCleartextTraffic="false"' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: trafic HTTP clair non interdit."
+            exit 1
+          }
+
+          grep -q 'android:dataExtractionRules="@xml/data_extraction_rules"' android/app/src/main/AndroidManifest.xml || {
+            echo "ERREUR: règles d’extraction/sauvegarde Android absentes."
+            exit 1
+          }
+
+          test -f android/app/src/main/res/xml/data_extraction_rules.xml || {
+            echo "ERREUR: data_extraction_rules.xml absent."
             exit 1
           }
 
@@ -143,9 +161,7 @@ jobs:
       - name: Lire et vérifier la version
         working-directory: app
         run: |
-          # package.json doit rester une version npm valide.
-          # Ex.: la release publique 1.0.13.1 utilise 1.0.13-1 côté npm.
-          NPM_VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node -p "require('./package.json').version")
 
           GRADLE="android/app/build.gradle"
           test -f "$GRADLE" || {
@@ -156,12 +172,12 @@ jobs:
           VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName[[:space:]]*["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$GRADLE" | head -n 1)
           VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -n 1)
 
-          echo "Version npm      : $NPM_VERSION"
-          echo "Version publique : $VERSION_NAME"
-          echo "versionCode      : $VERSION_CODE"
+          echo "package.json : $VERSION"
+          echo "versionName  : $VERSION_NAME"
+          echo "versionCode  : $VERSION_CODE"
 
-          test -n "$VERSION_NAME" || {
-            echo "ERREUR: versionName introuvable."
+          test "$VERSION" = "$VERSION_NAME" || {
+            echo "ERREUR: package.json et Android n'ont pas la même version."
             exit 1
           }
 
@@ -170,9 +186,7 @@ jobs:
             exit 1
           }
 
-          # La GitHub Release, le nom de l'APK et les métadonnées IGOR
-          # suivent toujours la version Android visible.
-          echo "RBL_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "RBL_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
       - name: Restaurer la clé de signature depuis GitHub Secrets
@@ -202,7 +216,7 @@ jobs:
           test -n "$RBL_KEY_PASSWORD" || { echo "ERREUR: secret RBL_KEY_PASSWORD absent."; exit 1; }
 
           KEY_SHA=$(sha256sum "$KEYSTORE" | awk '{print $1}')
-          EXPECTED_KEY_SHA="1b7cc0b63572f546cd2998e7be7e09ed9ae24b5a75e3f89be5d0f18f6d34b30a"
+                    EXPECTED_KEY_SHA="1b7cc0b63572f546cd2998e7be7e09ed9ae24b5a75e3f89be5d0f18f6d34b30a"
 
           echo "SHA256 fichier keystore : $KEY_SHA"
 
@@ -291,8 +305,7 @@ jobs:
         run: rm -rf "$GITHUB_WORKSPACE/app/signing"
 
       - name: Générer SHA-256 et métadonnées updater
-        run: |
-          APK=$(cat /tmp/redacted_signed_apk)
+        run: |          APK=$(cat /tmp/redacted_signed_apk)
           APK_NAME=$(basename "$APK")
           SHA=$(sha256sum "$APK" | awk '{print $1}')
 
