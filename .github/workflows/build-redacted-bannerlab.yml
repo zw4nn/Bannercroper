@@ -188,7 +188,7 @@ jobs:
           }
 
           echo "RBL_VERSION=$VERSION" >> "$GITHUB_ENV"
-                - name: Restaurer la clé de signature depuis GitHub Secrets
+          echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"      - name: Restaurer la clé de signature depuis GitHub Secrets
         working-directory: app
         env:
           RBL_KEYSTORE_BASE64: ${{ secrets.RBL_KEYSTORE_BASE64 }}
@@ -367,4 +367,3 @@ jobs:
           fi
 
           echo "Release publiée : ${TAG}"
-          echo "RBL_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
