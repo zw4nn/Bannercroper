@@ -1,117 +1,203 @@
 # Redacted BannerLab
 
-**Éditeur mobile-first non officiel pour créer, préparer et publier des bannières Ingress Prime.**
+**Version 1.0.16 · build 11600**
 
-> Version stable : **1.0.15**  
-> IGOR : **0.6.10** · MILO : **0.5.1**
+Redacted BannerLab est un outil mobile-first non officiel pour préparer, organiser, jouer et publier des fresques de missions **Ingress Prime**.
 
-Redacted BannerLab regroupe dans une seule application le travail de préparation d’une bannière : découpe de la fresque, organisation des missions, préparation du parcours, suivi dans IITC et assistance à la publication dans Mission Authoring Tool.
+Le Lab regroupe dans une seule application la création de bannière, la préparation des missions, le travail avec IITC, la publication vers Mission Authoring Tool et le suivi d'une fresque en jeu.
 
-Le projet est indépendant et **n’est ni affilié, ni approuvé, ni sponsorisé par Niantic**.
-
-## Ce que fait Redacted BannerLab
-
-- création d’une fresque à partir d’une image et découpe en missions ;
-- édition mobile des missions, titres, descriptions et paramètres ;
-- placement et organisation des portails ;
-- aperçu de la bannière et export des visuels ;
-- recherche et consultation de bannières Bannergress ;
-- préparation et suivi du parcours avec **IGOR**, le companion IITC ;
-- assistance à la publication avec **MILO**, sans automatiser le clic final de soumission ;
-- sauvegarde locale des projets et outils d’export / restauration ;
-- interface multilingue avec détection automatique de la langue et anglais en fallback.
-
-## Les assistants du Lab
-
-### IGOR
-
-**IITC Gateway for Operations & Routing**
-
-IGOR accompagne la préparation et le suivi des missions dans IITC : parcours, portails, progression et synchronisation volontaire avec Redacted BannerLab.
-
-### MILO
-
-**Mission Import & Launch Operator**
-
-MILO accompagne la publication dans Mission Authoring Tool. Il prépare les données de mission et guide l’Agent dans Chrome ou Firefox.
-
-**Le bouton final Submit reste toujours sous le contrôle de l’Agent.**
-
-### RITA
-
-**Redacted Information & Telegram Assistant**
-
-RITA est le bot Telegram du Lab pour le support, les informations et les échanges liés au projet.
-
-## Installation Android
-
-1. Ouvrir la section **Releases** de ce dépôt.
-2. Télécharger l’APK de la dernière version stable.
-3. Autoriser l’installation depuis cette source si Android le demande.
-4. Installer l’APK sans désinstaller une version officielle précédente de Redacted BannerLab.
-
-Les versions officielles utilisent la **même clé de signature Android**, afin que les mises à jour puissent s’installer par-dessus les versions précédentes.
-
-[➡️ Télécharger la dernière release](https://github.com/zw4nn/Redacted-Banner-Lab/releases/latest)
-
-## Code source et builds
-
-Le dépôt reste volontairement simple :
-
-- `Redacted_BannerLab_Source.zip` contient le code source utilisé pour le build ;
-- `.github/workflows/` contient le workflow GitHub Actions de compilation et de publication ;
-- `README.md` décrit toujours la **dernière version de production**.
-
-Lors d’un build, GitHub Actions :
-
-1. vérifie puis extrait le ZIP source ;
-2. installe les dépendances ;
-3. compile l’application web ;
-4. génère le projet Android ;
-5. applique les ressources et correctifs Android du projet ;
-6. vérifie la version ;
-7. signe l’APK avec la clé officielle injectée via **GitHub Actions Secrets** ;
-8. vérifie la signature et produit le SHA-256 ;
-9. publie les fichiers de release lorsque la publication est demandée.
-
-La clé de signature Android et ses mots de passe **ne sont pas présents dans le dépôt ni dans le ZIP source**.
-
-## Vie privée
-
-Redacted BannerLab est conçu avec une approche locale :
-
-- pas de compte Redacted BannerLab ;
-- pas de publicité ;
-- pas de télémétrie cachée ;
-- pas de collecte silencieuse de données de jeu ;
-- les projets restent locaux tant que l’utilisateur ne déclenche pas volontairement une action d’export, de partage, de synchronisation ou de publication.
-
-Certaines fonctions utilisent naturellement des services externes lorsque l’Agent les demande, notamment GitHub, Bannergress, OpenStreetMap / Valhalla, IITC, Mission Authoring Tool et Telegram.
-
-## Transparence
-
-Le dépôt public permet d’inspecter le code livré dans le ZIP source et le processus de build GitHub Actions.
-
-Les garde-fous du build vérifient notamment :
-
-- l’absence de clé de signature dans le ZIP ;
-- la cohérence entre version web et version Android ;
-- le certificat utilisé pour signer l’APK ;
-- le SHA-256 des APK publiés.
-
-## Versions de test
-
-Les builds intermédiaires et versions de test peuvent évoluer rapidement. **Ce README n’est volontairement pas modifié pour chaque build de test.**
-
-Il est mis à jour uniquement lorsqu’une version est réellement passée en **production / GitHub Release**. Cela évite que la page d’accueil du dépôt présente une fonction expérimentale comme déjà disponible au public, concept étonnamment raisonnable pour Internet.
-
-## Communauté
-
-Redacted BannerLab est un projet communautaire créé pour faciliter la conception et le suivi des bannières Ingress.
-
-Retours, bugs et idées peuvent être transmis via les accès Support / Telegram intégrés à l’application.
+> Projet communautaire indépendant. Redacted BannerLab n'est ni développé, ni approuvé, ni affilié à Niantic.
 
 ---
 
-© 2026 Zw4nn · Redacted BannerLab  
-Projet communautaire non officiel pour Ingress Prime.
+## 🧪 Les assistants du Lab
+
+### IGOR 0.6.10
+
+**IITC Gateway for Operations & Routing**
+
+IGOR accompagne la préparation du parcours dans IITC :
+
+- récupération des portails ;
+- construction mission par mission ;
+- actions et passphrases ;
+- reprise du dernier portail entre deux missions ;
+- statistiques et estimation piétonne via OpenStreetMap / Valhalla ;
+- sauvegarde locale de la progression ;
+- synchronisation manuelle authentifiée avec Redacted BannerLab.
+
+### MILO 0.5.1
+
+**Mission Import & Launch Operator**
+
+MILO accompagne la publication dans **Mission Authoring Tool** :
+
+- installation guidée dans Chrome Android ;
+- assistant pas à pas avec de vraies captures Chrome ;
+- chargement d'une bannière préparée par le Lab ;
+- préparation des missions, portails, actions, passphrases et images ;
+- reprise de la session de publication ;
+- gestion claire des fichiers et de la mémoire locale.
+
+Les fichiers actuels sont :
+
+- `MILO.user.js`
+- `MILO_CurrentBanner.json`
+- `MILO_Launch.txt`
+
+La compatibilité avec les anciens fichiers Publisher est conservée pendant la migration.
+
+**MILO prépare. L'Agent reste toujours seul à valider `Submit`.**
+
+---
+
+## 🎨 Création de fresques
+
+- import d'une image de fond ;
+- découpage en missions ;
+- éditeur multi-calques ;
+- textes et images superposables ;
+- calques globaux ou liés à certaines missions ;
+- cadrage individuel des cases ;
+- historique Annuler / Rétablir ;
+- aperçu et Studio plein écran ;
+- export du projet et sauvegarde complète ;
+- reprise automatique du travail local.
+
+---
+
+## 🗺️ Missions et parcours
+
+- Mission Planner mobile ;
+- portails et coordonnées ;
+- actions Hack, Mod, Capture/Upgrade, Link, Field et Passphrase ;
+- minimum de portails contrôlé avant publication ;
+- titres et descriptions par mission ;
+- description commune de bannière ;
+- reprise facultative du dernier portail d'une mission ;
+- recherche Bannergress par nom, ville, auteur ou proximité ;
+- favoris et reprise d'une fresque en cours.
+
+### Distances piétonnes
+
+Le Lab utilise **OpenStreetMap / Valhalla** pour estimer les trajets à pied entre les portails.
+
+La valeur « Valhalla brut » correspond à la réponse directe du moteur de routage. Le Lab contrôle ensuite les tronçons manifestement aberrants afin de produire une estimation piétonne plus exploitable.
+
+---
+
+## 🎮 Jouer une fresque
+
+L'overlay Android permet de suivre une fresque sans perdre le fil :
+
+- vraie tête de Redacted ;
+- panneau compact ;
+- navigation `<` / `>` ;
+- ouverture de la mission courante ;
+- bouton **Mission terminée** ;
+- réduction en bulle ;
+- déplacement et fermeture de l'overlay ;
+- progression conservée localement.
+
+À la fin d'une fresque, le Lab déclenche une célébration renforcée avec feux d'artifice et messages de **Redacted, IGOR et MILO**.
+
+L'overlay ne contrôle pas l'interface Ingress et n'effectue aucune action dans le jeu à la place de l'Agent.
+
+---
+
+## 🌍 Langues
+
+Redacted BannerLab prend en charge 20 langues avec détection automatique au premier lancement et sélection manuelle dans les réglages.
+
+Les chaînes encore non traduites utilisent l'anglais comme langue de secours. L'arabe active l'affichage RTL.
+
+---
+
+## 🔄 Mises à jour Android
+
+Le Lab intègre son propre mécanisme de mise à jour :
+
+1. détection d'une version plus récente ;
+2. téléchargement volontaire de l'APK ;
+3. vérification SHA-256, package, signature et `versionCode` ;
+4. installation uniquement après action explicite de l'utilisateur et confirmation Android.
+
+La même clé de signature Android est conservée entre les versions officielles afin de permettre les mises à jour sans désinstallation.
+
+---
+
+## 🔐 Confidentialité et sécurité
+
+Redacted BannerLab est conçu sans compte RBL, publicité ni télémétrie cachée.
+
+Les projets et images restent localement sur l'appareil sauf action volontaire d'export, de partage ou de publication.
+
+Certaines fonctions communiquent volontairement avec des services externes lorsqu'elles sont utilisées :
+
+- GitHub pour les mises à jour ;
+- Bannergress pour la recherche de bannières ;
+- OpenStreetMap / Valhalla pour le routage ;
+- Mission Authoring Tool pour la publication ;
+- Telegram pour le support et les informations communautaires.
+
+Le pont Redacted BannerLab ↔ IGOR est authentifié par un jeton local aléatoire. MILO est vérifié par SHA-256 avant son utilisation.
+
+Les clés de signature Android et les secrets de build ne sont jamais stockés dans le dépôt source.
+
+---
+
+## 🛠️ Développement
+
+### Prérequis
+
+- Node.js 22
+- Java 21
+- Android SDK / build-tools
+
+### Build web
+
+```bash
+npm install
+npm run build
+```
+
+### Synchronisation Android
+
+```bash
+npx cap add android
+npx cap sync android
+```
+
+Le build officiel Android est ensuite généré et signé par GitHub Actions avec les secrets de signature conservés hors du dépôt.
+
+### Versions embarquées
+
+- Redacted BannerLab : **1.0.16**
+- Android `versionCode` : **11600**
+- IGOR : **0.6.10**
+- MILO : **0.5.1**
+- Capacitor : **8.5.1**
+- Vite : **7.3.6**
+- Leaflet : **1.9.4**
+
+---
+
+## 📦 v1.0.16
+
+Cette version finalise notamment :
+
+- l'intégration officielle de MILO ;
+- le tutoriel Chrome guidé ;
+- les nouveaux fichiers MILO ;
+- l'affichage des versions IGOR et MILO dans les réglages ;
+- le nouvel overlay Redacted plus compact ;
+- la navigation plus claire ;
+- la célébration de fin de fresque renforcée.
+
+Les notes détaillées de version sont disponibles dans `CHANGELOG_v1.0.16.md`.
+
+---
+
+© 2026 Zw4nn · Redacted BannerLab
+
+Fait pour la communauté Ingress. Pensé d'abord côté Enlightened, mais ouvert à tous les Agents. 💚💙
