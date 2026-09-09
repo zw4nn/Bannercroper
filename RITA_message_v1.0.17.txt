@@ -1,0 +1,22 @@
+🧪 Redacted BannerLab passe en 1.0.17
+
+Le Lab accueille officiellement un nouvel employé : 🧮 LEON 0.1.0, Leveling & Exact Operations Navigator.
+
+LEON sait lire tes AP ou tes statistiques Ingress, prendre en compte les bonus en cours et calculer un chemin exact jusqu’à ton objectif.
+
+🔐 IGOR 0.6.17 et MILO 0.5.2 embarquent également les derniers durcissements du bridge et du flux de publication.
+
+📱 Comme depuis plusieurs versions, vous pouvez mettre Redacted BannerLab à jour directement depuis le Lab, dans Réglages & infos. RITA vous guidera pour vérifier la nouvelle version, la télécharger et lancer l’installation.
+
+L’affichage des mises à jour a aussi été nettoyé : fini l’énorme numéro Android interne dans l’interface, seuls les numéros de version utiles restent visibles.
+
+🧹 Le ZIP source a été remis au propre : plus d’anciens README, changelogs et notes de version qui traînent dans chaque archive.
+
+Et comme toujours, quelques petites choses ont changé dans le Lab. À vous de les trouver.
+
+📲 APK et détails de la release : lien GitHub v1.0.17 ajouté par RITA au moment de la publication.
+
+P.S. : Khatre, tu peux me rendre ma bière s’il te plaît ? 🍺
+
+— RITA
+Redacted Information & Telegram Assistant
